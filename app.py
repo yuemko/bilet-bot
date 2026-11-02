@@ -9,6 +9,7 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "")
 
+# --- HAVALİMANI IATA KODLARI ---
 AIRPORT_CODES = {
     "prag": "PRG", "prague": "PRG",
     "brno": "BRQ", "ostrava": "OSR", "karlovy vary": "KLV", "karlovyvary": "KLV",
@@ -22,6 +23,7 @@ AIRPORT_CODES = {
     "barselona": "BCN", "barcelona": "BCN", "madrid": "MAD", "londra": "LON", "london": "LON"
 }
 
+# --- REGİOJET ŞEHİR / İSTASYON ID'LERİ ---
 REGIOJET_IDS = {
     "prag": "10202002", "prague": "10202002",
     "cb": "10202000", "budějovice": "10202000", "ceske budejovice": "10202000",
@@ -91,7 +93,7 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI (Google Flights)
+    # 1. UÇAK TARAMASI
     if SERPAPI_KEY:
         try:
             params = {
@@ -101,4 +103,42 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
                 "outbound_date": tarih,
                 "currency": "EUR",
                 "hl": "tr",
-                "api_key":
+                "api_key": SERPAPI_KEY
+            }
+            response = requests.get("https://serpapi.com/search", params=params, timeout=12)
+            if response.status_code == 200:
+                res = response.json()
+                flights = res.get("best_flights", []) + res.get("other_flights", [])
+                for f in flights[:3]:
+                    price = f.get("price", "Bilinmiyor")
+                    leg = f.get("flights", [{}])[0]
+                    airline = leg.get("airline", "Hava Yolu")
+                    dep_time = leg.get("departure_airport", {}).get("time", "")
+
+                    msg = (
+                        f"✈️ *UÇAK BİLETİ*\n"
+                        f"🛫 *Kalkış:* {dep_code} -> 🛬 *Varış:* {arr_code}\n"
+                        f"✈️ *Firma:* {airline}\n"
+                        f"📅 *Tarih/Saat:* {tarih} {dep_time}\n"
+                        f"💰 *Fiyat:* {price} EUR\n"
+                        f"🎓 *Öğrenci Notu:* ISIC / Öğrenci indirimi geçerli olabilir.\n"
+                        f"🔗 [Google Flights Satın Al](https://www.google.com/travel/flights)\n"
+                    )
+                    sonuclar.append(msg)
+        except Exception as e:
+            print(f"Uçak hatası: {e}")
+
+    # 2. OTOBÜS & TREN TARAMASI (RegioJet)
+    from_regio = REGIOJET_IDS.get(kalkis_sehri.lower())
+    to_regio = REGIOJET_IDS.get(varis_sehri.lower())
+
+    if from_regio and to_regio:
+        try:
+            url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
+            params = {"fromLocationId": from_regio, "toLocationId": to_regio, "departureDate": tarih}
+            headers = {"Accept": "application/json"}
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                res = response.json()
+                for r in res.get("routes", [])[:3]:
