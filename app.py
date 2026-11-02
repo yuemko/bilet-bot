@@ -9,7 +9,6 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "")
 
-# --- HAVALİMANI IATA KODLARI ---
 AIRPORT_CODES = {
     "prag": "PRG", "prague": "PRG",
     "brno": "BRQ", "ostrava": "OSR", "karlovy vary": "KLV", "karlovyvary": "KLV",
@@ -23,7 +22,6 @@ AIRPORT_CODES = {
     "barselona": "BCN", "barcelona": "BCN", "madrid": "MAD", "londra": "LON", "london": "LON"
 }
 
-# --- REGİOJET ŞEHİR / İSTASYON ID'LERİ ---
 REGIOJET_IDS = {
     "prag": "10202002", "prague": "10202002",
     "cb": "10202000", "budějovice": "10202000", "ceske budejovice": "10202000",
@@ -84,10 +82,20 @@ def send_telegram(chat_id, text):
     except Exception as e:
         print(f"Telegram hatası: {e}")
 
-def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
-    if not tarih:
-        tarih = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+def tarih_formatla(tarih_str):
+    if not tarih_str:
+        return (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+    try:
+        parcalar = tarih_str.split("-")
+        if len(parcalar) == 3:
+            yil, ay, gun = parcalar[0], parcalar[1].zfill(2), parcalar[2].zfill(2)
+            return f"{yil}-{ay}-{gun}"
+    except Exception:
+        pass
+    return (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
 
+def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
+    tarih = tarih_formatla(tarih_girdisi)
     sonuclar = []
 
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
@@ -162,7 +170,7 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
             print(f"RegioJet hatası: {e}")
 
     if not sonuclar:
-        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için bilet bulunamadı."
+        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için sefer bulunamadı."
 
     return "\n---\n".join(sonuclar)
 
@@ -192,8 +200,7 @@ def webhook():
             varis = kelimeler[1]
             tarih = kelimeler[2] if len(kelimeler) >= 3 else None
 
-            tarih_mesaj = tarih if tarih else "yakın tarih"
-            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* ({tarih_mesaj}) için seferler taranıyor...")
+            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* için seferler taranıyor...")
             rapor = dinamik_bilet_tara(kalkis, varis, tarih)
             send_telegram(chat_id, rapor)
 
