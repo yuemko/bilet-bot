@@ -9,75 +9,34 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "")
 
-# --- HAVALİMANI IATA KODLARI (SerpApi - Google Flights) ---
 AIRPORT_CODES = {
-    # Çekya Şehirleri
     "prag": "PRG", "prague": "PRG",
-    "brno": "BRQ",
-    "ostrava": "OSR",
-    "karlovy vary": "KLV", "karlovyvary": "KLV",
-    
-    # Komşu Ülkeler & Popüler Erasmus Rotaları
-    "viyana": "VIE", "vienna": "VIE",
-    "budapeşte": "BUD", "budapest": "BUD",
-    "bratislava": "BTS",
-    "berlin": "BER",
-    "münih": "MUC", "munich": "MUC",
-    "dresden": "DRS",
-    "frankfurt": "FRA",
-    "nürnberg": "NUE", "nuremberg": "NUE",
-    "varşova": "WAW", "warsaw": "WAW",
-    "krakow": "KRK",
-    "wroclaw": "WRO",
-    
-    # Güney & Batı Avrupa Popüler Merkezler
-    "roma": "FCO", "rome": "FCO",
-    "milano": "MXP", "milan": "MXP",
-    "venedik": "VCE", "venice": "VCE",
-    "bologna": "BLQ",
-    "floransa": "FLR", "florence": "FLR",
-    "paris": "CDG",
-    "amsterdam": "AMS",
-    "brüksel": "BRU", "brussels": "BRU",
-    "barselona": "BCN", "barcelona": "BCN",
-    "madrid": "MAD",
-    "londra": "LON", "london": "LON"
+    "brno": "BRQ", "ostrava": "OSR", "karlovy vary": "KLV", "karlovyvary": "KLV",
+    "viyana": "VIE", "vienna": "VIE", "budapeşte": "BUD", "budapest": "BUD",
+    "bratislava": "BTS", "berlin": "BER", "münih": "MUC", "munich": "MUC",
+    "dresden": "DRS", "frankfurt": "FRA", "nürnberg": "NUE", "nuremberg": "NUE",
+    "varşova": "WAW", "warsaw": "WAW", "krakow": "KRK", "wroclaw": "WRO",
+    "roma": "FCO", "rome": "FCO", "milano": "MXP", "milan": "MXP",
+    "venedik": "VCE", "venice": "VCE", "bologna": "BLQ", "floransa": "FLR", "florence": "FLR",
+    "paris": "CDG", "amsterdam": "AMS", "brüksel": "BRU", "brussels": "BRU",
+    "barselona": "BCN", "barcelona": "BCN", "madrid": "MAD", "londra": "LON", "london": "LON"
 }
 
-# --- REGİOJET ŞEHİR / İSTASYON ID'LERİ (Otobüs & Tren) ---
 REGIOJET_IDS = {
-    # Çekya Şehirleri
     "prag": "10202002", "prague": "10202002",
     "cb": "10202000", "budějovice": "10202000", "ceske budejovice": "10202000",
-    "brno": "10202001",
-    "pilsen": "10202006", "plzen": "10202006",
-    "ostrava": "10202007",
-    "olomouc": "10202008",
-    "liberec": "10202009",
-    "hradec kralove": "10202010", "hradec": "10202010",
-    "pardubice": "10202011",
-    "karlovy vary": "10202012", "karlovyvary": "10202012",
-    "zlin": "10202013",
-    "jihlava": "10202014",
-    "usti": "10202015", "usti nad labem": "10202015",
-
-    # Avusturya & Almanya & Slovakya & Macaristan
-    "viyana": "10202003", "vienna": "10202003",
-    "berlin": "10202004",
-    "münih": "10202005", "munich": "10202005",
-    "dresden": "10202016",
-    "nürnberg": "10202021", "nuremberg": "10202021",
-    "frankfurt": "10202022",
-    "bratislava": "10202017",
-    "budapeşte": "10202018", "budapest": "10202018",
-
-    # Polonya & İtalya & Hollanda & Diğerleri
-    "krakow": "10202019",
-    "varşova": "10202020", "warsaw": "10202020",
-    "wroclaw": "10202023",
-    "venedik": "10202024", "venice": "10202024",
-    "milano": "10202025", "milan": "10202025",
-    "roma": "10202026", "rome": "10202026",
+    "brno": "10202001", "pilsen": "10202006", "plzen": "10202006",
+    "ostrava": "10202007", "olomouc": "10202008", "liberec": "10202009",
+    "hradec kralove": "10202010", "hradec": "10202010", "pardubice": "10202011",
+    "karlovy vary": "10202012", "karlovyvary": "10202012", "zlin": "10202013",
+    "jihlava": "10202014", "usti": "10202015", "usti nad labem": "10202015",
+    "viyana": "10202003", "vienna": "10202003", "berlin": "10202004",
+    "münih": "10202005", "munich": "10202005", "dresden": "10202016",
+    "nürnberg": "10202021", "nuremberg": "10202021", "frankfurt": "10202022",
+    "bratislava": "10202017", "budapeşte": "10202018", "budapest": "10202018",
+    "krakow": "10202019", "varşova": "10202020", "warsaw": "10202020",
+    "wroclaw": "10202023", "venedik": "10202024", "venice": "10202024",
+    "milano": "10202025", "milan": "10202025", "roma": "10202026", "rome": "10202026",
     "amsterdam": "10202027"
 }
 
@@ -128,12 +87,11 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
         tarih = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
 
     sonuclar = []
-    hata_loglari = []
 
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI (Google Flights / SerpApi)
+    # 1. UÇAK TARAMASI (Google Flights)
     if SERPAPI_KEY:
         try:
             params = {
@@ -143,111 +101,4 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
                 "outbound_date": tarih,
                 "currency": "EUR",
                 "hl": "tr",
-                "api_key": SERPAPI_KEY
-            }
-            res = requests.get("https://serpapi.com/search", params=params, timeout=12).json()
-            flights = res.get("best_flights", []) + res.get("other_flights", [])
-
-            for f in flights[:3]:
-                price = f.get("price", "Fiyat belirtilmedi")
-                leg = f.get("flights", [{}])[0]
-                airline = leg.get("airline", "Hava Yolu")
-                dep_time = leg.get("departure_airport", {}).get("time", "")
-
-                msg = (
-                    f"✈️ *UÇAK BİLETİ*\n"
-                    f"🛫 *Kalkış:* {dep_code} -> 🛬 *Varış:* {arr_code}\n"
-                    f"✈️ *Firma:* {airline}\n"
-                    f"📅 *Tarih/Saat:* {tarih} {dep_time}\n"
-                    f"💰 *Fiyat:* {price} EUR\n"
-                    f"🎓 *Öğrenci Notu:* Havayolu sitesinden ISIC/Öğrenci indirimi sorgulanabilir.\n"
-                    f"🔗 [Google Flights Satın Al](https://www.google.com/travel/flights)\n"
-                )
-                sonuclar.append(msg)
-        except Exception as e:
-            hata_loglari.append(f"Uçak API Hatası: {str(e)}")
-    else:
-        hata_loglari.append("SerpApi Key girilmemiş.")
-
-    # 2. OTOBÜS & TREN TARAMASI (RegioJet)
-    from_regio = REGIOJET_IDS.get(kalkis_sehri.lower())
-    to_regio = REGIOJET_IDS.get(varis_sehri.lower())
-
-    if from_regio and to_regio:
-        try:
-            url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
-            params = {"fromLocationId": from_regio, "toLocationId": to_regio, "departureDate": tarih}
-            res = requests.get(url, params=params, timeout=10).json()
-
-            for r in res.get("routes", [])[:3]:
-                price = r.get("priceFrom", "Bilinmiyor")
-                vehicle_types = r.get("vehicleTypes", ["BUS"])
-                vehicle = "🚆 Tren" if "TRAIN" in vehicle_types else "🚌 Otobüs"
-                dep_time_raw = r.get("departureTime", "")
-                dep_time = dep_time_raw.split("T")[-1][:5] if "T" in dep_time_raw else dep_time_raw
-
-                msg = (
-                    f"{vehicle} *BİLETİ*\n"
-                    f"🛫 {kalkis_sehri.capitalize()} -> 🛬 {varis_sehri.capitalize()}\n"
-                    f"📅 *Saat:* {dep_time}\n"
-                    f"💰 *Fiyat:* {price} EUR / CZK\n"
-                    f"🎓 *ISIC Öğrenci:* Kart ibrazı ile %15-%75 indirim imkanı.\n"
-                    f"🔗 [RegioJet Bilet Al](https://regiojet.com)\n"
-                )
-                sonuclar.append(msg)
-        except Exception as e:
-            hata_loglari.append(f"RegioJet API Hatası: {str(e)}")
-    else:
-        hata_loglari.append(f"RegioJet ID tanımlı değil: {kalkis_sehri}-{varis_sehri}")
-
-    if not sonuclar:
-        log_text = "\n".join(hata_loglari) if hata_loglari else "Uygun sefer bulunamadı."
-        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için bilet bulunamadı.\n\n🛠 *Teknik Detay:* \n{log_text}"
-
-    return "\n---\n".join(sonuclar)
-
-@app.route("/", methods=["GET"])
-def index():
-    return "Bilet Avcısı Botu Canlıda Çalışıyor!"
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    if data and "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "").strip()
-        text_lower = text.lower()
-        kelimeler = text.split()
-
-        if "nastenka" in text_lower:
-            secilen_soz = random.choice(NASTENKA_SOZLERI)
-            send_telegram(chat_id, f"🕯️ *Nastenka'ya Hisler (Beyaz Geceler)*\n\n_{secilen_soz}_")
-
-        elif any(keyword in text_lower for keyword in ["söz", "soz", "leyla", "mecnun", "tutunamayanlar", "hüzün", "huzun"]):
-            secilen_soz = random.choice(GENEL_SOZLER)
-            send_telegram(chat_id, f"🕯️ *Günün Sözü*\n\n_{secilen_soz}_")
-
-        elif len(kelimeler) >= 2:
-            kalkis = kelimeler[0]
-            varis = kelimeler[1]
-            tarih = kelimeler[2] if len(kelimeler) >= 3 else None
-
-            tarih_mesaj = tarih if tarih else "yakın tarih"
-            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* ({tarih_mesaj}) aranıyor...")
-            rapor = dinamik_bilet_tara(kalkis, varis, tarih)
-            send_telegram(chat_id, rapor)
-
-        else:
-            send_telegram(chat_id, (
-                "🤖 *Bilet Avcısı Botu*\n\n"
-                "📌 *Bilet Arama:* Kalkış, varış ve tarih yazın.\n"
-                "👉 Örnek: `Prag Budapeşte`\n"
-                "👉 Örnek: `Brno Krakow`\n"
-                "👉 Örnek: `Prag Berlin 2026-11-20`\n\n"
-                "🕯️ *Günün Sözü:* `nastenka`, `söz`, `leyla` veya `mecnun` yazabilirsiniz."
-            ))
-
-    return jsonify({"status": "ok"}), 200
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+                "api_key":
