@@ -1,6 +1,7 @@
 import os
 import random
 import requests
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -8,7 +9,6 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "")
 
-# Popüler Şehir IATA ve RegioJet ID Kodları
 CITY_CODES = {
     "prag": "PRG", "prague": "PRG",
     "viyana": "VIE", "vienna": "VIE",
@@ -28,7 +28,6 @@ REGIOJET_DEST_IDS = {
     "münih": "10202005", "munich": "10202005"
 }
 
-# --- SÖZ KATEGORİLERİ VE LİSTELERİ ---
 NASTENKA_SOZLERI = [
     "\"Senin bir tek gülücüğün, bana bir ömür boyu hayal kurmak için yeter Nastenka... Seni sevmek bana yetiyor, sevilmesem de olur.\" — Fyodor Dostoyevski (Beyaz Geceler)",
     "\"Tanrım! Bir dakikalık mutluluk! Bütün bir insan ömrü için az bir şey mi bu?\" — Fyodor Dostoyevski (Beyaz Geceler)",
@@ -40,14 +39,11 @@ NASTENKA_SOZLERI = [
 ]
 
 GENEL_SOZLER = NASTENKA_SOZLERI + [
-    # Oğuz Atay (Tutunamayanlar & Tehlikeli Oyunlar)
     "\"Beni hemen anlamalısın, çünkü ben dünyayı anlamıyorum.\" — Oğuz Atay (Tutunamayanlar)",
     "\"Şu anda, sana güzel bir söz söyleyebilmek için 10.000 kitap okumuş olmayı isterdim. Yine de seni seviyorum.\" — Oğuz Atay (Tutunamayanlar)",
     "\"Bizi ne zaman anlayacaklar Olric? Hiçbir zaman... Zaten anlamalarına da gerek kalmadı.\" — Oğuz Atay (Tutunamayanlar)",
     "\"Belli bir sebebi yok; sadece içimde büyük bir kırgınlık var, bir de hiçbir yere sığamama hissi.\" — Oğuz Atay (Tehlikeli Oyunlar)",
     "\"Bizler, hayatın kıyısında durup içeriye girmeye cesaret edemeyen tutunamayanlarız.\" — Oğuz Atay",
-
-    # Leyla ile Mecnun (Dizi Replikleri)
     "\"O gemi bir gün gelecek Mecnun... Biz sadece yanlış limanda bekliyoruz.\" — İsmail Abi (Leyla ile Mecnun)",
     "\"Ben seni öyle bir severim ki, sen bile kendini sevmeye doyamazsın Leyla.\" — Mecnun (Leyla ile Mecnun)",
     "\"Ben birisini sevdim Leyla... Ama o başkasını sevdi. Sonra ben kendimi sevmeyi de unuttum.\" — Mecnun (Leyla ile Mecnun)",
@@ -55,8 +51,6 @@ GENEL_SOZLER = NASTENKA_SOZLERI + [
     "\"Kireçburnu sahili çok güzel de... İçindeki insanı yakınca soğuk oluyor be abi.\" — İsmail Abi (Leyla ile Mecnun)",
     "\"Benim hayallerim vardı Leyla. Sonra sen geldin, hayallerimden daha güzel bir şey oldun. Şimdi gidersen geriye sadece boşluk kalır.\" — Mecnun (Leyla ile Mecnun)",
     "\"Giden gidiyor Mecnun, kalan sadece el sallıyor.\" — İsmail Abi (Leyla ile Mecnun)",
-
-    # Diğer Hassas Kalpler (Kafka, Zweig, Sabahattin Ali)
     "\"Seni tanıdığımdan beri kalbimin bir köşesinde hep ince, sızlayan bir sızı var. Geçmesini hiç istemediğim bir sızı...\" — Franz Kafka (Milena'ya Mektuplar)",
     "\"Ben sadece senin mutlu olmanı istedim; benimle olup olmamanın artık hiçbir önemi yoktu.\" — Stefan Zweig (Bilinmeyen Bir Kadının Mektubu)",
     "\"Biz ki hassas kalpleriz; dünyaya alışamayan, her rüzgarda yaprak gibi titreyenleriz.\" — Sabahattin Ali (Kürk Mantolu Madonna)",
@@ -74,15 +68,18 @@ def send_telegram(chat_id, text):
     try:
         requests.post(url, json=payload)
     except Exception as e:
-        print(f"Telegram gönderme hatası: {e}")
+        print(f"Telegram hatası: {e}")
 
-def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih="2026-11-20"):
+def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
+    if not tarih:
+        # Tarih girilmezse varsayılan olarak 14 gün sonrasını arar
+        tarih = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+
     sonuclar = []
-
     dep_code = CITY_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
-    arr_code = CITY_CODES.get(varis_sehri.lower(), varis_sehri.upper()) if varis_sehri.lower() != "heryer" else "EC"
+    arr_code = CITY_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI (Google Flights / SerpApi)
+    # 1. UÇAK TARAMASI
     try:
         params = {
             "engine": "google_flights",
@@ -93,14 +90,14 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih="2026-11-20"):
             "hl": "tr",
             "api_key": SERPAPI_KEY
         }
-        res = requests.get("https://serpapi.com/search", params=params, timeout=10).json()
+        res = requests.get("https://serpapi.com/search", params=params, timeout=15).json()
         flights = res.get("best_flights", []) + res.get("other_flights", [])
 
         for f in flights[:5]:
-            price = f.get("price", 999)
+            price = f.get("price", "Bilinmiyor")
             leg = f["flights"][0]
             airline = leg.get("airline", "Hava Yolu")
-            dep_time = leg["departure_airport"].get("time", "")
+            dep_time = leg.get("departure_airport", {}).get("time", "")
             
             msg = (
                 f"✈️ *UÇAK BİLETİ*\n"
@@ -124,9 +121,9 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih="2026-11-20"):
         res = requests.get(url, params=params, timeout=10).json()
         
         for r in res.get("routes", [])[:3]:
-            price = r.get("priceFrom", 999)
+            price = r.get("priceFrom", "Bilinmiyor")
             vehicle = "🚆 Tren" if r.get("vehicleTypes", [])[0] == "TRAIN" else "🚌 Otobüs"
-            dep_time = r.get("departureTime").split("T")[1][:5]
+            dep_time = r.get("departureTime", "").split("T")[-1][:5]
             
             msg = (
                 f"{vehicle} *BİLETİ*\n"
@@ -140,7 +137,7 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih="2026-11-20"):
         print(f"Otobüs hatası: {e}")
 
     if not sonuclar:
-        return "⚠️ Belirttiğin kriterlerde uygun bilet bulunamadı."
+        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için bilet bulunamadı. Lütfen tarihi belirterek tekrar deneyin (Örn: `Prag Roma 2026-12-01`)."
     
     return "\n---\n".join(sonuclar)
 
@@ -157,34 +154,31 @@ def webhook():
         text_lower = text.lower()
         kelimeler = text.split()
 
-        # 1. Özel "nastenka" Tetikleyicisi
         if "nastenka" in text_lower:
             secilen_soz = random.choice(NASTENKA_SOZLERI)
             send_telegram(chat_id, f"🕯️ *Nastenka'ya Hisler (Beyaz Geceler)*\n\n_{secilen_soz}_")
 
-        # 2. Genel Söz Tetikleyicileri (söz, leyla, mecnun, tutunamayanlar vs.)
         elif any(keyword in text_lower for keyword in ["söz", "soz", "leyla", "mecnun", "tutunamayanlar", "hüzün", "huzun"]):
             secilen_soz = random.choice(GENEL_SOZLER)
             send_telegram(chat_id, f"🕯️ *Günün Sözü*\n\n_{secilen_soz}_")
 
-        # 3. Bilet Arama Tetikleyicisi (En az 2 şehir yazıldığında)
         elif len(kelimeler) >= 2:
             kalkis = kelimeler[0]
             varis = kelimeler[1]
-            tarih = kelimeler[2] if len(kelimeler) >= 3 else "2026-11-20"
+            tarih = kelimeler[2] if len(kelimeler) >= 3 else None
 
-            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* için uçak, otobüs ve trenler taranıyor...")
+            tarih_mesaj = tarih if tarih else "yakın tarih"
+            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* ({tarih_mesaj}) için biletler taranıyor...")
             rapor = dinamik_bilet_tara(kalkis, varis, tarih)
             send_telegram(chat_id, rapor)
 
-        # 4. Yardım / Rehber Mesajı
         else:
             send_telegram(chat_id, (
-                "🤖 *Bilet Avcısı & Hassas Ruhlar Botu*\n\n"
-                "📌 *Bilet Arama:* Kalkış ve varış şehirlerini yazın.\n"
+                "🤖 *Bilet Avcısı Botu*\n\n"
+                "📌 *Bilet Arama:* Kalkış, varış ve opsiyonel tarih yazın.\n"
                 "👉 Örnek: `Prag Roma`\n"
-                "👉 Örnek: `Viyana Berlin 2026-11-25`\n\n"
-                "🕯️ *Günün Sözü:* `nastenka`, `söz`, `leyla` veya `mecnun` yazarak ruhunuza dokunacak edebi sözler alabilirsiniz."
+                "👉 Örnek: `Prag Roma 2026-11-25`\n\n"
+                "🕯️ *Günün Sözü:* `nastenka`, `söz`, `leyla` veya `mecnun` yazabilirsiniz."
             ))
 
     return jsonify({"status": "ok"}), 200
