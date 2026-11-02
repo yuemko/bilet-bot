@@ -7,7 +7,6 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
-# Render değişkeni okunamazsa yedek olarak doğrudan SerpApi Key'i devreye girer
 SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "38e17865fa12c48db2e73e112fe648937dad1e3dbf4649cacddf7177cde7ef5").strip()
 
 AIRPORT_CODES = {
@@ -156,4 +155,20 @@ def webhook():
         text_lower = text.lower()
         kelimeler = text.split()
 
-        if "nasten
+        if "nastenka" in text_lower:
+            send_telegram(chat_id, f"🕯️ *Beyaz Geceler*\n\n_{random.choice(NASTENKA_SOZLERI)}_")
+        elif any(k in text_lower for k in ["söz", "soz", "leyla", "mecnun"]):
+            send_telegram(chat_id, f"🕯️ *Günün Sözü*\n\n_{random.choice(GENEL_SOZLER)}_")
+        elif len(kelimeler) >= 2:
+            kalkis, varis = kelimeler[0], kelimeler[1]
+            tarih = kelimeler[2] if len(kelimeler) >= 3 else None
+            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* taranıyor...")
+            rapor = dinamik_bilet_tara(kalkis, varis, tarih)
+            send_telegram(chat_id, rapor)
+        else:
+            send_telegram(chat_id, "🤖 *Kullanım:* `Prag Roma 2026-11-20` veya `nastenka` yazabilirsiniz.")
+
+    return jsonify({"status": "ok"}), 200
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
