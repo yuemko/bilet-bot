@@ -22,7 +22,7 @@ AIRPORT_CODES = {
     "amsterdam": "AMS"
 }
 
-# RegioJet Şehir ID'leri (Otobüs / Tren için)
+# RegioJet Şehir ID'leri
 REGIOJET_IDS = {
     "prag": "10202002", "prague": "10202002",
     "viyana": "10202003", "vienna": "10202003",
@@ -71,7 +71,7 @@ def send_telegram(chat_id, text):
     try:
         requests.post(url, json=payload)
     except Exception as e:
-        print(f"Telegram gönderme hatası: {e}")
+        print(f"Telegram hatası: {e}")
 
 def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
     if not tarih:
@@ -82,7 +82,7 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI (Google Flights / SerpApi)
+    # 1. UÇAK TARAMASI (Google Flights - Öğrenci/Genç Tarifesi)
     if SERPAPI_KEY:
         try:
             params = {
@@ -92,11 +92,10 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
                 "outbound_date": tarih,
                 "currency": "EUR",
                 "hl": "tr",
+                "travel_class": "1", # Economy
                 "api_key": SERPAPI_KEY
             }
             res = requests.get("https://serpapi.com/search", params=params, timeout=15).json()
-            
-            # Hem best_flights hem other_flights kontrol et
             flights = res.get("best_flights", []) + res.get("other_flights", [])
             
             for f in flights[:5]:
@@ -106,25 +105,32 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
                 dep_time = leg.get("departure_airport", {}).get("time", "")
                 
                 msg = (
-                    f"✈️ *UÇAK BİLETİ*\n"
+                    f"✈️ *ÖĞRENCİ UÇAK BİLETİ*\n"
                     f"🛫 *Kalkış:* {dep_code} -> 🛬 *Varış:* {arr_code}\n"
                     f"✈️ *Firma:* {airline}\n"
                     f"📅 *Tarih/Saat:* {tarih} {dep_time}\n"
                     f"💰 *Fiyat:* {price} EUR\n"
+                    f"🎓 *Not:* ISIC Kartı / Öğrenci indirimi geçerli olabilir.\n"
                     f"🔗 [Google Flights İncele](https://www.google.com/travel/flights)\n"
                 )
                 sonuclar.append(msg)
         except Exception as e:
-            print(f"Uçak arama hatası: {e}")
+            print(f"Uçak hatası: {e}")
 
-    # 2. OTOBÜS & TREN TARAMASI (RegioJet)
+    # 2. OTOBÜS & TREN TARAMASI (RegioJet - ISIC Öğrenci Tarifesi)
     from_regio_id = REGIOJET_IDS.get(kalkis_sehri.lower())
     to_regio_id = REGIOJET_IDS.get(varis_sehri.lower())
 
     if from_regio_id and to_regio_id:
         try:
             url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
-            params = {"fromLocationId": from_regio_id, "toLocationId": to_regio_id, "departureDate": tarih}
+            # RegioJet'e ISIC öğrenci tarifesi (STUDENT / ISIC) parametresi gönderiyoruz
+            params = {
+                "fromLocationId": from_regio_id,
+                "toLocationId": to_regio_id,
+                "departureDate": tarih,
+                "tariffs": "ISIC"
+            }
             res = requests.get(url, params=params, timeout=10).json()
             
             for r in res.get("routes", [])[:3]:
@@ -135,18 +141,19 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
                 dep_time = dep_time_raw.split("T")[-1][:5] if "T" in dep_time_raw else dep_time_raw
                 
                 msg = (
-                    f"{vehicle} *BİLETİ*\n"
+                    f"{vehicle} *ÖĞRENCİ BİLETİ (ISIC İNDİRİMLİ)*\n"
                     f"🛫 {kalkis_sehri.capitalize()} -> 🛬 {varis_sehri.capitalize()}\n"
                     f"📅 *Saat:* {dep_time}\n"
-                    f"💰 *Fiyat:* {price} EUR / CZK\n"
-                    f"🔗 [RegioJet Sitesinde Gör](https://regiojet.com)\n"
+                    f"💰 *İndirimli Fiyat:* {price} EUR / CZK\n"
+                    f"🎓 *Gerekli:* Binerken ISIC Kartı Gösterilmeli\n"
+                    f"🔗 [RegioJet ISIC Bilet Al](https://regiojet.com)\n"
                 )
                 sonuclar.append(msg)
         except Exception as e:
             print(f"Otobüs/Tren hatası: {e}")
 
     if not sonuclar:
-        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için bilet bulunamadı veya SerpApi anahtarı eksik. Farklı bir tarih deneyin (Örn: `Prag Roma 2026-11-20`)."
+        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için öğrenci biletleri taranırken sonuç bulunamadı. Lütfen tarihi belirterek tekrar deneyin (Örn: `Prag Roma 2026-11-20`)."
     
     return "\n---\n".join(sonuclar)
 
@@ -177,16 +184,16 @@ def webhook():
             tarih = kelimeler[2] if len(kelimeler) >= 3 else None
 
             tarih_mesaj = tarih if tarih else "yakın tarih"
-            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* ({tarih_mesaj}) için biletler taranıyor...")
+            send_telegram(chat_id, f"🎓 *{kalkis.upper()} -> {varis.upper()}* ({tarih_mesaj}) için ISIC Öğrenci Biletleri taranıyor...")
             rapor = dinamik_bilet_tara(kalkis, varis, tarih)
             send_telegram(chat_id, rapor)
 
         else:
             send_telegram(chat_id, (
-                "🤖 *Bilet Avcısı Botu*\n\n"
-                "📌 *Bilet Arama:* Kalkış, varış ve opsiyonel tarih yazın.\n"
-                "👉 Örnek: `Prag Roma`\n"
-                "👉 Örnek: `Prag Roma 2026-11-20`\n\n"
+                "🎓 *Bilet Avcısı (ISIC Öğrenci Modu)*\n\n"
+                "📌 *Öğrenci Bileti Arama:* Kalkış, varış ve tarih yazın.\n"
+                "👉 Örnek: `Prag Viyana`\n"
+                "👉 Örnek: `Prag Viyana 2026-11-20`\n\n"
                 "🕯️ *Günün Sözü:* `nastenka`, `söz`, `leyla` veya `mecnun` yazabilirsiniz."
             ))
 
