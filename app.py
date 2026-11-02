@@ -97,11 +97,12 @@ def tarih_formatla(tarih_str):
 def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
     tarih = tarih_formatla(tarih_girdisi)
     sonuclar = []
+    hata_detaylari = []
 
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI
+    # 1. UÇAK TARAMASI (Google Flights)
     if SERPAPI_KEY:
         try:
             params = {
@@ -133,8 +134,12 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
                         f"🔗 [Google Flights Satın Al](https://www.google.com/travel/flights)\n"
                     )
                     sonuclar.append(msg)
+            else:
+                hata_detaylari.append(f"SerpApi HTTP {response.status_code}")
         except Exception as e:
-            print(f"Uçak hatası: {e}")
+            hata_detaylari.append(f"SerpApi Hatası: {e}")
+    else:
+        hata_detaylari.append("SERPAPI_KEY bulunamadı.")
 
     # 2. OTOBÜS & TREN TARAMASI (RegioJet)
     from_regio = REGIOJET_IDS.get(kalkis_sehri.lower())
@@ -142,9 +147,17 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
 
     if from_regio and to_regio:
         try:
-            url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
-            params = {"fromLocationId": from_regio, "toLocationId": to_regio, "departureDate": tarih}
-            headers = {"Accept": "application/json"}
+            url = f"https://brn-yee-api.regiojet.com/rest/busTickets/search"
+            params = {
+                "fromLocationId": from_regio,
+                "toLocationId": to_regio,
+                "departureDate": tarih,
+                "tariffs": "REGULAR"
+            }
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json"
+            }
             response = requests.get(url, params=params, headers=headers, timeout=10)
             
             if response.status_code == 200:
@@ -166,11 +179,26 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
                         f"🔗 [RegioJet Bilet Al](https://regiojet.com)\n"
                     )
                     sonuclar.append(msg)
+            else:
+                hata_detaylari.append(f"RegioJet HTTP {response.status_code}")
         except Exception as e:
-            print(f"RegioJet hatası: {e}")
+            hata_detaylari.append(f"RegioJet Hatası: {e}")
+    else:
+        hata_detaylari.append(f"RegioJet Şehir ID eksik: {kalkis_sehri}-{varis_sehri}")
 
+    # Fallback: Eğer API biletleri gelmezse direkt satın alma linki üret
     if not sonuclar:
-        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için sefer bulunamadı."
+        regio_link = f"https://regiojet.com/?fromLocationId={from_regio}&toLocationId={to_regio}&departureDate={tarih}" if from_regio and to_regio else "https://regiojet.com"
+        google_flights_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{arr_code}%20from%20{dep_code}%20on%20{tarih}"
+        
+        fallback_msg = (
+            f"🎫 *{kalkis_sehri.upper()} -> {varis_sehri.upper()} ({tarih}) BİLET ARAMA LİNKLERİ*\n\n"
+            f"Anlık otomasyon servisinde sonuç listelenemedi ancak canlı arama linklerinden hemen biletinizi sorgulayabilirsiniz:\n\n"
+            f"✈️ *Uçak Biletleri:* [Google Flights Üzerinden Gör]({google_flights_link})\n"
+            f"🚌🚆 *Otobüs & Tren:* [RegioJet / StudentAgency Üzerinden Gör]({regio_link})\n\n"
+            f"🎓 *Öğrenci Notu:* RegioJet biletini alırken ISIC tarifesini seçmeyi unutmayın!"
+        )
+        return fallback_msg
 
     return "\n---\n".join(sonuclar)
 
@@ -200,7 +228,7 @@ def webhook():
             varis = kelimeler[1]
             tarih = kelimeler[2] if len(kelimeler) >= 3 else None
 
-            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* için seferler taranıyor...")
+            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* için biletler taranıyor...")
             rapor = dinamik_bilet_tara(kalkis, varis, tarih)
             send_telegram(chat_id, rapor)
 
