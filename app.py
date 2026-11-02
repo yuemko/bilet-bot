@@ -82,7 +82,7 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI (Google Flights - Öğrenci/Genç Tarifesi)
+    # 1. UÇAK TARAMASI (Google Flights)
     if SERPAPI_KEY:
         try:
             params = {
@@ -92,7 +92,6 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
                 "outbound_date": tarih,
                 "currency": "EUR",
                 "hl": "tr",
-                "travel_class": "1", # Economy
                 "api_key": SERPAPI_KEY
             }
             res = requests.get("https://serpapi.com/search", params=params, timeout=15).json()
@@ -105,55 +104,67 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih=None):
                 dep_time = leg.get("departure_airport", {}).get("time", "")
                 
                 msg = (
-                    f"✈️ *ÖĞRENCİ UÇAK BİLETİ*\n"
+                    f"✈️ *UÇAK BİLETİ*\n"
                     f"🛫 *Kalkış:* {dep_code} -> 🛬 *Varış:* {arr_code}\n"
                     f"✈️ *Firma:* {airline}\n"
                     f"📅 *Tarih/Saat:* {tarih} {dep_time}\n"
-                    f"💰 *Fiyat:* {price} EUR\n"
-                    f"🎓 *Not:* ISIC Kartı / Öğrenci indirimi geçerli olabilir.\n"
+                    f"💰 *Standart Fiyat:* {price} EUR\n"
+                    f"🎓 *Öğrenci Notu:* Havayolu sitesinden ISIC/Öğrenci tarifesi sorgulanabilir.\n"
                     f"🔗 [Google Flights İncele](https://www.google.com/travel/flights)\n"
                 )
                 sonuclar.append(msg)
         except Exception as e:
             print(f"Uçak hatası: {e}")
 
-    # 2. OTOBÜS & TREN TARAMASI (RegioJet - ISIC Öğrenci Tarifesi)
+    # 2. OTOBÜS & TREN TARAMASI (RegioJet - Standart ve ISIC Ayrı Ayrı)
     from_regio_id = REGIOJET_IDS.get(kalkis_sehri.lower())
     to_regio_id = REGIOJET_IDS.get(varis_sehri.lower())
 
     if from_regio_id and to_regio_id:
         try:
             url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
-            # RegioJet'e ISIC öğrenci tarifesi (STUDENT / ISIC) parametresi gönderiyoruz
-            params = {
-                "fromLocationId": from_regio_id,
-                "toLocationId": to_regio_id,
-                "departureDate": tarih,
-                "tariffs": "ISIC"
-            }
-            res = requests.get(url, params=params, timeout=10).json()
             
-            for r in res.get("routes", [])[:3]:
-                price = r.get("priceFrom", "Bilinmiyor")
-                vehicle_types = r.get("vehicleTypes", ["BUS"])
+            # Standart Tarife
+            params_std = {"fromLocationId": from_regio_id, "toLocationId": to_regio_id, "departureDate": tarih}
+            res_std = requests.get(url, params=params_std, timeout=10).json()
+            
+            # ISIC Öğrenci Tarifesi
+            params_isic = {"fromLocationId": from_regio_id, "toLocationId": to_regio_id, "departureDate": tarih, "tariffs": "ISIC"}
+            res_isic = requests.get(url, params=params_isic, timeout=10).json()
+            
+            routes_std = res_std.get("routes", [])
+            routes_isic = res_isic.get("routes", [])
+
+            for i in range(min(3, len(routes_std))):
+                r_std = routes_std[i]
+                price_std = r_std.get("priceFrom", "Bilinmiyor")
+                
+                # Aynı sefer için ISIC öğrenci fiyatını eşleştir
+                price_isic = None
+                if i < len(routes_isic):
+                    price_isic = routes_isic[i].get("priceFrom")
+
+                vehicle_types = r_std.get("vehicleTypes", ["BUS"])
                 vehicle = "🚆 Tren" if "TRAIN" in vehicle_types else "🚌 Otobüs"
-                dep_time_raw = r.get("departureTime", "")
+                dep_time_raw = r_std.get("departureTime", "")
                 dep_time = dep_time_raw.split("T")[-1][:5] if "T" in dep_time_raw else dep_time_raw
                 
+                ogrenci_bilgi = f"🎓 *ISIC Öğrenci Fiyatı:* {price_isic} EUR / CZK\n" if price_isic else "🎓 *Öğrenci İndirimi:* Yok / Standart Tarife\n"
+
                 msg = (
-                    f"{vehicle} *ÖĞRENCİ BİLETİ (ISIC İNDİRİMLİ)*\n"
+                    f"{vehicle} *BİLETİ*\n"
                     f"🛫 {kalkis_sehri.capitalize()} -> 🛬 {varis_sehri.capitalize()}\n"
                     f"📅 *Saat:* {dep_time}\n"
-                    f"💰 *İndirimli Fiyat:* {price} EUR / CZK\n"
-                    f"🎓 *Gerekli:* Binerken ISIC Kartı Gösterilmeli\n"
-                    f"🔗 [RegioJet ISIC Bilet Al](https://regiojet.com)\n"
+                    f"💰 *Standart Fiyat:* {price_std} EUR / CZK\n"
+                    f"{ogrenci_bilgi}"
+                    f"🔗 [RegioJet Bilet Al](https://regiojet.com)\n"
                 )
                 sonuclar.append(msg)
         except Exception as e:
             print(f"Otobüs/Tren hatası: {e}")
 
     if not sonuclar:
-        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için öğrenci biletleri taranırken sonuç bulunamadı. Lütfen tarihi belirterek tekrar deneyin (Örn: `Prag Roma 2026-11-20`)."
+        return f"⚠️ *{kalkis_sehri.upper()} -> {varis_sehri.upper()}* ({tarih}) için bilet bulunamadı. Lütfen tarihi belirterek tekrar deneyin (Örn: `Prag Roma 2026-11-20`)."
     
     return "\n---\n".join(sonuclar)
 
@@ -184,16 +195,16 @@ def webhook():
             tarih = kelimeler[2] if len(kelimeler) >= 3 else None
 
             tarih_mesaj = tarih if tarih else "yakın tarih"
-            send_telegram(chat_id, f"🎓 *{kalkis.upper()} -> {varis.upper()}* ({tarih_mesaj}) için ISIC Öğrenci Biletleri taranıyor...")
+            send_telegram(chat_id, f"🔎 *{kalkis.upper()} -> {varis.upper()}* ({tarih_mesaj}) için standart ve öğrenci biletleri taranıyor...")
             rapor = dinamik_bilet_tara(kalkis, varis, tarih)
             send_telegram(chat_id, rapor)
 
         else:
             send_telegram(chat_id, (
-                "🎓 *Bilet Avcısı (ISIC Öğrenci Modu)*\n\n"
-                "📌 *Öğrenci Bileti Arama:* Kalkış, varış ve tarih yazın.\n"
+                "🤖 *Bilet Avcısı Botu*\n\n"
+                "📌 *Bilet Arama:* Kalkış, varış ve opsiyonel tarih yazın.\n"
                 "👉 Örnek: `Prag Viyana`\n"
-                "👉 Örnek: `Prag Viyana 2026-11-20`\n\n"
+                "👉 Örnek: `Prag Roma 2026-12-01`\n\n"
                 "🕯️ *Günün Sözü:* `nastenka`, `söz`, `leyla` veya `mecnun` yazabilirsiniz."
             ))
 
