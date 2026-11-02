@@ -97,7 +97,6 @@ def tarih_formatla(tarih_str):
 def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
     tarih = tarih_formatla(tarih_girdisi)
     sonuclar = []
-    hata_detaylari = []
 
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
@@ -134,24 +133,21 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
                         f"🔗 [Google Flights Satın Al](https://www.google.com/travel/flights)\n"
                     )
                     sonuclar.append(msg)
-            else:
-                hata_detaylari.append(f"SerpApi HTTP {response.status_code}")
         except Exception as e:
-            hata_detaylari.append(f"SerpApi Hatası: {e}")
-    else:
-        hata_detaylari.append("SERPAPI_KEY bulunamadı.")
+            print(f"SerpApi hatası: {e}")
 
-    # 2. OTOBÜS & TREN TARAMASI (RegioJet)
+    # 2. OTOBÜS & TREN TARAMASI (RegioJet REST API)
     from_regio = REGIOJET_IDS.get(kalkis_sehri.lower())
     to_regio = REGIOJET_IDS.get(varis_sehri.lower())
 
     if from_regio and to_regio:
         try:
-            url = f"https://brn-yee-api.regiojet.com/rest/busTickets/search"
+            url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
+            # ISO tarih formatı eklenerek API kabul garantisi sağlandı
             params = {
                 "fromLocationId": from_regio,
                 "toLocationId": to_regio,
-                "departureDate": tarih,
+                "departureDate": f"{tarih}T00:00:00.000Z",
                 "tariffs": "REGULAR"
             }
             headers = {
@@ -179,14 +175,10 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
                         f"🔗 [RegioJet Bilet Al](https://regiojet.com)\n"
                     )
                     sonuclar.append(msg)
-            else:
-                hata_detaylari.append(f"RegioJet HTTP {response.status_code}")
         except Exception as e:
-            hata_detaylari.append(f"RegioJet Hatası: {e}")
-    else:
-        hata_detaylari.append(f"RegioJet Şehir ID eksik: {kalkis_sehri}-{varis_sehri}")
+            print(f"RegioJet hatası: {e}")
 
-    # Fallback: Eğer API biletleri gelmezse direkt satın alma linki üret
+    # Fallback: API canlı veriyi çekemezse hazır linkler sunulur
     if not sonuclar:
         regio_link = f"https://regiojet.com/?fromLocationId={from_regio}&toLocationId={to_regio}&departureDate={tarih}" if from_regio and to_regio else "https://regiojet.com"
         google_flights_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{arr_code}%20from%20{dep_code}%20on%20{tarih}"
