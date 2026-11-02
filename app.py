@@ -7,9 +7,7 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
-
-# SERPAPI PANELİNDEN ALDIĞIN GÜNCEL KEY'İ AŞAĞIDAKİ TIRNAK İÇİNE YAPIŞTIR
-SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "BURAYA_SERPAPI_KEY_YAPISTIR").strip()
+SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "").strip()
 
 AIRPORT_CODES = {
     "prag": "PRG", "prague": "PRG",
@@ -62,47 +60,12 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
         except Exception:
             tarih = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
 
-    sonuclar = []
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI (SerpApi - google_flights)
-    if SERPAPI_KEY and SERPAPI_KEY != "BURAYA_SERPAPI_KEY_YAPISTIR":
-        try:
-            params = {
-                "engine": "google_flights",
-                "departure_id": dep_code,
-                "arrival_id": arr_code,
-                "outbound_date": tarih,
-                "type": "2",  # 2: Tek Yön Uçuş Parametresi (ŞART)
-                "currency": "EUR",
-                "hl": "tr",
-                "api_key": SERPAPI_KEY
-            }
-            res_api = requests.get("https://serpapi.com/search.json", params=params, timeout=15)
-            data = res_api.json()
+    mesajlar = []
 
-            flights = data.get("best_flights", []) + data.get("other_flights", [])
-            for f in flights[:3]:
-                price = f.get("price", "Bilinmiyor")
-                leg = f.get("flights", [{}])[0]
-                airline = leg.get("airline", "Hava Yolu")
-                dep_time = leg.get("departure_airport", {}).get("time", "")
-
-                msg = (
-                    f"✈️ *UÇAK BİLETİ*\n"
-                    f"🛫 *Kalkış:* {dep_code} -> 🛬 *Varış:* {arr_code}\n"
-                    f"✈️ *Firma:* {airline}\n"
-                    f"📅 *Tarih/Saat:* {tarih} {dep_time}\n"
-                    f"💰 *Fiyat:* {price} EUR\n"
-                    f"🎓 *Öğrenci Notu:* ISIC/Öğrenci indirimi geçerli olabilir.\n"
-                    f"🔗 [Google Flights Satın Al](https://www.google.com/travel/flights)\n"
-                )
-                sonuclar.append(msg)
-        except Exception as e:
-            print(f"SerpApi hatası: {e}")
-
-    # 2. OTOBÜS & TREN TARAMASI (RegioJet)
+    # 1. OTOBÜS & TREN TARAMASI (RegioJet)
     from_regio = REGIOJET_IDS.get(kalkis_sehri.lower())
     to_regio = REGIOJET_IDS.get(varis_sehri.lower())
 
@@ -110,7 +73,10 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
         try:
             url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
             params = {"fromLocationId": from_regio, "toLocationId": to_regio, "departureDate": tarih}
-            headers = {"Accept": "application/json"}
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "application/json"
+            }
             res_api = requests.get(url, params=params, headers=headers, timeout=10)
             if res_api.status_code == 200:
                 res = res_api.json()
@@ -122,28 +88,40 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
                     dep_time = dep_time_raw.split("T")[-1][:5] if "T" in dep_time_raw else dep_time_raw
 
                     msg = (
-                        f"{vehicle} *BİLETİ*\n"
+                        f"{vehicle} *BİLETİ (RegioJet)*\n"
                         f"🛫 {kalkis_sehri.capitalize()} -> 🛬 {varis_sehri.capitalize()}\n"
                         f"📅 *Saat:* {dep_time}\n"
                         f"💰 *Fiyat:* {price} EUR / CZK\n"
-                        f"🎓 *ISIC Öğrenci:* Binerken kart ibrazı gerekebilir.\n"
-                        f"🔗 [RegioJet Bilet Al](https://regiojet.com)\n"
+                        f"🎓 *ISIC Öğrenci:* Kart ibrazı ile indirim imkanı.\n"
+                        f"🔗 [RegioJet'ten Al](https://regiojet.com)\n"
                     )
-                    sonuclar.append(msg)
+                    mesajlar.append(msg)
         except Exception as e:
             print(f"RegioJet hatası: {e}")
 
-    if not sonuclar:
-        google_flights_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{arr_code}%20from%20{dep_code}%20on%20{tarih}"
-        regio_link = f"https://regiojet.com/?fromLocationId={from_regio}&toLocationId={to_regio}&departureDate={tarih}" if from_regio and to_regio else "https://regiojet.com"
-        return (
-            f"🎫 *{kalkis_sehri.upper()} -> {varis_sehri.upper()} ({tarih})*\n\n"
-            f"Bilet Arama Bağlantıları:\n"
-            f"✈️ [Google Flights ile Uçak Ara]({google_flights_link})\n"
-            f"🚌🚆 [RegioJet ile Otobüs/Tren Ara]({regio_link})"
-        )
+    # 2. UÇAK BİLETİ LİNKİ & CANLI ARAMA KARTI
+    google_flights_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{arr_code}%20from%20{dep_code}%20on%20{tarih}"
+    skyscanner_link = f"https://www.skyscanner.net/transport/flights/{dep_code.lower()}/{arr_code.lower()}/{tarih[2:].replace('-', '')}/"
+    regio_link = f"https://regiojet.com/?fromLocationId={from_regio}&toLocationId={to_regio}&departureDate={tarih}" if from_regio and to_regio else "https://regiojet.com"
 
-    return "\n---\n".join(sonuclar)
+    ucak_karti = (
+        f"✈️ *UÇAK BİLETİ ARAMA KARTI*\n"
+        f"🛫 *Güzergah:* {dep_code} -> {arr_code}\n"
+        f"📅 *Tarih:* {tarih}\n"
+        f"🔗 [Google Flights Üzerinden Canlı Fiyatları Gör]({google_flights_link})\n"
+        f"🔗 [Skyscanner Üzerinden Alternatif Fiyatları Gör]({skyscanner_link})\n"
+    )
+    mesajlar.append(ucak_karti)
+
+    otobus_karti = (
+        f"🚌🚆 *OTOBÜS & TREN BİLETİ KARTI*\n"
+        f"🛫 *Güzergah:* {kalkis_sehri.capitalize()} -> {varis_sehri.capitalize()}\n"
+        f"📅 *Tarih:* {tarih}\n"
+        f"🔗 [RegioJet / Student Agency Bilet Al]({regio_link})\n"
+    )
+    mesajlar.append(otobus_karti)
+
+    return "\n---\n".join(mesajlar)
 
 @app.route("/", methods=["GET"])
 def index():
