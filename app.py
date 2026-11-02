@@ -7,7 +7,8 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
-SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "").strip()
+# Render değişkeni okunamazsa yedek olarak doğrudan SerpApi Key'i devreye girer
+SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "38e17865fa12c48db2e73e112fe648937dad1e3dbf4649cacddf7177cde7ef5").strip()
 
 AIRPORT_CODES = {
     "prag": "PRG", "prague": "PRG",
@@ -106,4 +107,53 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
     if from_regio and to_regio:
         try:
             url = "https://brn-yee-api.regiojet.com/rest/busTickets/search"
-            params = {"fromLocationId": from_regio, "toLocationId": to_regio, "departureDate":
+            params = {"fromLocationId": from_regio, "toLocationId": to_regio, "departureDate": tarih}
+            headers = {"Accept": "application/json"}
+            res_api = requests.get(url, params=params, headers=headers, timeout=10)
+            if res_api.status_code == 200:
+                res = res_api.json()
+                for r in res.get("routes", [])[:3]:
+                    price = r.get("priceFrom", "Bilinmiyor")
+                    vehicle_types = r.get("vehicleTypes", ["BUS"])
+                    vehicle = "🚆 Tren" if "TRAIN" in vehicle_types else "🚌 Otobüs"
+                    dep_time_raw = r.get("departureTime", "")
+                    dep_time = dep_time_raw.split("T")[-1][:5] if "T" in dep_time_raw else dep_time_raw
+
+                    msg = (
+                        f"{vehicle} *BİLETİ*\n"
+                        f"🛫 {kalkis_sehri.capitalize()} -> 🛬 {varis_sehri.capitalize()}\n"
+                        f"📅 *Saat:* {dep_time}\n"
+                        f"💰 *Fiyat:* {price} EUR / CZK\n"
+                        f"🎓 *ISIC Öğrenci:* Binerken kart ibrazı gerekebilir.\n"
+                        f"🔗 [RegioJet Bilet Al](https://regiojet.com)\n"
+                    )
+                    sonuclar.append(msg)
+        except Exception as e:
+            print(f"RegioJet hatası: {e}")
+
+    if not sonuclar:
+        google_flights_link = f"https://www.google.com/travel/flights?q=Flights%20to%20{arr_code}%20from%20{dep_code}%20on%20{tarih}"
+        regio_link = f"https://regiojet.com/?fromLocationId={from_regio}&toLocationId={to_regio}&departureDate={tarih}" if from_regio and to_regio else "https://regiojet.com"
+        return (
+            f"🎫 *{kalkis_sehri.upper()} -> {varis_sehri.upper()} ({tarih})*\n\n"
+            f"Bilet Arama Bağlantıları:\n"
+            f"✈️ [Google Flights ile Uçak Ara]({google_flights_link})\n"
+            f"🚌🚆 [RegioJet ile Otobüs/Tren Ara]({regio_link})"
+        )
+
+    return "\n---\n".join(sonuclar)
+
+@app.route("/", methods=["GET"])
+def index():
+    return "Bilet Botu Canlıda!"
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    if data and "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "").strip()
+        text_lower = text.lower()
+        kelimeler = text.split()
+
+        if "nasten
