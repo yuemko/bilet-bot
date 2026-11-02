@@ -8,8 +8,8 @@ app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 
-# !!! AŞAĞIDAKİ TIRNAK İÇİNE SERPAPI'DEN KOPYALADIĞIN GÜNCEL KEY'İ YAPIŞTIR !!!
-SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "38e17865fa12c48db2e73e112fe648937dad1e3dbf4649cacddf7177cde7ef5").strip()
+# SERPAPI PANELİNDEN ALDIĞIN GÜNCEL KEY'İ AŞAĞIDAKİ TIRNAK İÇİNE YAPIŞTIR
+SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "BURAYA_SERPAPI_KEY_YAPISTIR").strip()
 
 AIRPORT_CODES = {
     "prag": "PRG", "prague": "PRG",
@@ -66,39 +66,39 @@ def dinamik_bilet_tara(kalkis_sehri, varis_sehri, tarih_girdisi=None):
     dep_code = AIRPORT_CODES.get(kalkis_sehri.lower(), kalkis_sehri.upper())
     arr_code = AIRPORT_CODES.get(varis_sehri.lower(), varis_sehri.upper())
 
-    # 1. UÇAK TARAMASI (SerpApi)
-    if SERPAPI_KEY:
+    # 1. UÇAK TARAMASI (SerpApi - google_flights)
+    if SERPAPI_KEY and SERPAPI_KEY != "BURAYA_SERPAPI_KEY_YAPISTIR":
         try:
             params = {
                 "engine": "google_flights",
                 "departure_id": dep_code,
                 "arrival_id": arr_code,
                 "outbound_date": tarih,
+                "type": "2",  # 2: Tek Yön Uçuş Parametresi (ŞART)
                 "currency": "EUR",
                 "hl": "tr",
                 "api_key": SERPAPI_KEY
             }
             res_api = requests.get("https://serpapi.com/search.json", params=params, timeout=15)
             data = res_api.json()
-            
-            if "error" not in data:
-                flights = data.get("best_flights", []) + data.get("other_flights", [])
-                for f in flights[:3]:
-                    price = f.get("price", "Bilinmiyor")
-                    leg = f.get("flights", [{}])[0]
-                    airline = leg.get("airline", "Hava Yolu")
-                    dep_time = leg.get("departure_airport", {}).get("time", "")
 
-                    msg = (
-                        f"✈️ *UÇAK BİLETİ*\n"
-                        f"🛫 *Kalkış:* {dep_code} -> 🛬 *Varış:* {arr_code}\n"
-                        f"✈️ *Firma:* {airline}\n"
-                        f"📅 *Tarih/Saat:* {tarih} {dep_time}\n"
-                        f"💰 *Fiyat:* {price} EUR\n"
-                        f"🎓 *Öğrenci Notu:* ISIC/Öğrenci indirimi geçerli olabilir.\n"
-                        f"🔗 [Google Flights Satın Al](https://www.google.com/travel/flights)\n"
-                    )
-                    sonuclar.append(msg)
+            flights = data.get("best_flights", []) + data.get("other_flights", [])
+            for f in flights[:3]:
+                price = f.get("price", "Bilinmiyor")
+                leg = f.get("flights", [{}])[0]
+                airline = leg.get("airline", "Hava Yolu")
+                dep_time = leg.get("departure_airport", {}).get("time", "")
+
+                msg = (
+                    f"✈️ *UÇAK BİLETİ*\n"
+                    f"🛫 *Kalkış:* {dep_code} -> 🛬 *Varış:* {arr_code}\n"
+                    f"✈️ *Firma:* {airline}\n"
+                    f"📅 *Tarih/Saat:* {tarih} {dep_time}\n"
+                    f"💰 *Fiyat:* {price} EUR\n"
+                    f"🎓 *Öğrenci Notu:* ISIC/Öğrenci indirimi geçerli olabilir.\n"
+                    f"🔗 [Google Flights Satın Al](https://www.google.com/travel/flights)\n"
+                )
+                sonuclar.append(msg)
         except Exception as e:
             print(f"SerpApi hatası: {e}")
 
